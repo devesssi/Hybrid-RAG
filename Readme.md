@@ -1,6 +1,6 @@
 ![alt text](image.png)
 
-notion link: [text](https://app.notion.com/p/Being-me-32b65d62c991803d99a2dd306caf809a?source=copy_link)
+notion link: [text](https://app.notion.com/p/RAG-34365d62c991807292dcef21bbf2a929?v=32065d62c99180119f17000c46c767a2&source=copy_link)
 # Custom Resilient RAG Engine
 
 A production-minded, full-stack Retrieval-Augmented Generation (RAG) platform built to handle heavy document ingestion, layout-preserving text parsing, and verifiable semantic retrieval. 
