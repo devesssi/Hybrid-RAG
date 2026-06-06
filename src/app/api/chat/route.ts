@@ -1,6 +1,23 @@
 // src/app/api/chat/route.ts
 import { NextResponse } from "next/server";
 import { conversationalEngine } from "../../../../lib/engine"; // Adjust path to target your compiled LangGraph
+import { traceable } from "langsmith/traceable";
+
+// Encapsulate the LangGraph execution block so LangSmith captures the entry inputs and outputs
+const traceEngineInvoke = traceable(
+  async (message: string, conversationId: string) => {
+    // Bind execution context to the distinct conversational thread session
+    const config = { configurable: { thread_id: conversationId } };
+
+    return await conversationalEngine.invoke(
+      {
+        messages: [{ role: "user", content: message }],
+      },
+      config
+    );
+  },
+  { name: "LangGraph Chat Execution Engine", run_type: "chain" }
+);
 
 export async function POST(req: Request) {
   try {
@@ -13,18 +30,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Bind execution context to the distinct conversational thread session
-    const config = { configurable: { thread_id: conversationId } };
-
     console.log(`💬 Processing API chat request for session context: [${conversationId}]`);
 
-    // Invoke your LangGraph state architecture
-    const finalState = await conversationalEngine.invoke(
-      {
-        messages: [{ role: "user", content: message }],
-      },
-      config
-    );
+    // Invoke your LangGraph state architecture wrapped in the tracking layout
+    const finalState = await traceEngineInvoke(message, conversationId);
 
     // Ship back the structured answer along with vector citation scores to feed the UI
     return NextResponse.json({
