@@ -173,14 +173,15 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f7f7fb] text-slate-800 selection:bg-violet-200">
+    <main className="h-screen overflow-hidden bg-[#f7f7fb] text-slate-800 selection:bg-violet-200">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-violet-300/35 blur-[130px]" />
         <div className="absolute -right-36 top-1/3 h-[28rem] w-[28rem] rounded-full bg-cyan-200/45 blur-[130px]" />
         <div className="absolute inset-0 bg-[linear-gradient(rgba(100,116,139,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(100,116,139,.06)_1px,transparent_1px)] bg-[size:44px_44px]" />
       </div>
 
-      <div className="relative mx-auto flex min-h-screen max-w-[1680px]">
+      <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" onChange={handleFileUpload} className="hidden" disabled={isUploading} />
+      <div className="relative mx-auto flex h-screen max-w-[1680px]">
         <aside className="hidden w-[290px] shrink-0 border-r border-slate-200/80 bg-white/70 p-5 backdrop-blur-xl lg:flex lg:flex-col">
           <div className="flex items-center gap-3 px-2 py-2">
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 shadow-lg shadow-violet-500/20">
@@ -197,8 +198,8 @@ export default function Home() {
             <button onClick={() => setWorkspaceView("chat")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${workspaceView === "chat" ? "bg-violet-100 text-violet-700 ring-1 ring-inset ring-violet-200" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}`}>
               <Sparkles className="h-4 w-4" /> Ask your knowledge base
             </button>
-            <button onClick={() => { setWorkspaceView("library"); fileInputRef.current?.click(); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${workspaceView === "library" ? "bg-violet-100 text-violet-700 ring-1 ring-inset ring-violet-200" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}`}>
-              <Upload className="h-4 w-4" /> Add a document
+            <button onClick={() => setWorkspaceView("library")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${workspaceView === "library" ? "bg-violet-100 text-violet-700 ring-1 ring-inset ring-violet-200" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}`}>
+              <Layers className="h-4 w-4" /> Document library
             </button>
           </div>
 
@@ -315,10 +316,10 @@ export default function Home() {
 
             <aside className="hidden overflow-y-auto bg-white/45 p-5 xl:block">
               <div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-900">Knowledge base</p><span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{indexedDocument ? "01" : "00"} DOCS</span></div>
-              <div onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }} onDragLeave={() => setIsDragging(false)} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()} className={`mt-4 cursor-pointer rounded-2xl border border-dashed p-5 text-center transition ${isDragging ? "border-violet-400 bg-violet-100" : "border-slate-300 bg-white/80 hover:border-violet-400 hover:bg-violet-50"}`}>
-                <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" onChange={handleFileUpload} className="hidden" disabled={isUploading} />
-                <div className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-violet-500/15 text-violet-300">{isUploading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}</div>
-                <p className="mt-3 text-sm font-medium text-slate-800">{isUploading ? "Building your index" : "Drop a PDF here"}</p>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-5 text-center shadow-sm">
+                <div className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-violet-100 text-violet-600"><Layers className="h-5 w-5" /></div>
+                <p className="mt-3 text-sm font-medium text-slate-800">Keep documents organized</p>
+                <button onClick={() => setWorkspaceView("library")} className="mt-4 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 transition hover:bg-violet-100">Open library</button>
                 <p className="mt-1 text-xs text-slate-500">or click to browse · 4 MB max</p>
               </div>
 
