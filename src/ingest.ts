@@ -1,4 +1,4 @@
-import { db } from "./db/index";
+import { getDb } from "./db/index";
 import { documents, documentChunks } from "./db/schema";
 import { getEmbedding } from "../lib/ai";
 
@@ -8,8 +8,26 @@ interface ProcessDocumentInput {
   rawText: string;
 }
 
+const CHILD_CHUNK_WORDS = 120;
+const CHILD_CHUNK_OVERLAP_WORDS = 24;
+
+function splitIntoChildChunks(text: string): string[] {
+  const words = text.replace(/\s+/g, " ").trim().split(" ");
+  if (words.length <= CHILD_CHUNK_WORDS) return words.length ? [words.join(" ")] : [];
+
+  const chunks: string[] = [];
+  const step = CHILD_CHUNK_WORDS - CHILD_CHUNK_OVERLAP_WORDS;
+  for (let start = 0; start < words.length; start += step) {
+    const chunk = words.slice(start, start + CHILD_CHUNK_WORDS).join(" ");
+    if (chunk) chunks.push(chunk);
+    if (start + CHILD_CHUNK_WORDS >= words.length) break;
+  }
+  return chunks;
+}
+
 export async function ingestDocument({ title, sourceUrl, rawText }: ProcessDocumentInput) {
   try {
+    const db = getDb();
     console.log(`🚀 Starting optimized ingestion for: "${title}" (${rawText.length} characters)`);
 
     // 1. Initialize parent document entry
@@ -21,7 +39,7 @@ export async function ingestDocument({ title, sourceUrl, rawText }: ProcessDocum
     if (!insertedDoc) throw new Error("Failed to register document master record.");
     const documentId = insertedDoc.id;
 
-    // 2. Parse into parent blocks (paragraphs)
+    // 2. Keep paragraphs as parent context, then create overlapping child windows.
     const paragraphs = rawText
       .split(/\n\s*\n/)
       .map(p => p.trim())
@@ -37,15 +55,10 @@ export async function ingestDocument({ title, sourceUrl, rawText }: ProcessDocum
 
     // 3. Flatten and build individual execution tasks
     for (const paragraph of paragraphs) {
-      const sentences = paragraph
-        .split(/(?<=[.!?])\s+/)
-        .map(s => s.trim())
-        .filter(s => s.length > 10);
-
-      for (const sentence of sentences) {
+      for (const childChunk of splitIntoChildChunks(paragraph)) {
         insertPayload.push({
           documentId,
-          content: sentence,
+          content: childChunk,
           parentContent: paragraph,
           embedding: [], 
         });

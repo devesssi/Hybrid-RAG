@@ -5,6 +5,10 @@ import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import path from "path";
 import { pathToFileURL } from "url";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
 // 1. Resolve the absolute physical file path to the worker in node_modules
 const workerPath = path.join(
   process.cwd(),
@@ -25,6 +29,14 @@ export async function POST(req: Request) {
 
     if (!file) {
       return NextResponse.json({ error: "No document file detected in request payload." }, { status: 400 });
+    }
+
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      return NextResponse.json({ error: "Only PDF files are supported." }, { status: 415 });
+    }
+
+    if (file.size === 0 || file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: "Upload a PDF between 1 byte and 10 MB." }, { status: 413 });
     }
 
     console.log(`📡 API received upload request for file: ${file.name}`);

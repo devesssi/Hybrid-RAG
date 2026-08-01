@@ -1,9 +1,10 @@
 // src/app/layout.tsx
 import React from "react";
+import "./globals.css";
 
 export const metadata = {
-  title: "Hybrid RAG Engine Dashboard",
-  description: "Stateful Hybrid RAG Verification Loop",
+  title: "VerbaMind | Grounded document intelligence",
+  description: "Upload a document, ask questions, and inspect the sources behind every answer.",
 };
 
 export default function RootLayout({

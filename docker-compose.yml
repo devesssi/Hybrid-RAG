@@ -4,7 +4,7 @@ services:
     container_name: verbamind_db
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-for-local-only}
       POSTGRES_DB: verbamind
     ports:
       - "5432:5432"
