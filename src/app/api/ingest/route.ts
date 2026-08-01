@@ -27,8 +27,11 @@ export async function POST(req: Request) {
     const bytes = await file.arrayBuffer();
     // pdf-parse ships its Node canvas setup separately. It must run first on
     // Vercel, where Node does not provide DOMMatrix by default.
-    require("pdf-parse/worker");
+    const { getData } = require("pdf-parse/worker") as typeof import("pdf-parse/worker");
     const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
+    // Use the package's self-contained worker data URL. The default worker path
+    // is a sibling file that Vercel's output tracer does not retain.
+    PDFParse.setWorker(getData());
 
     // This stays a Node require so Next does not choose the browser export.
     const parser = new PDFParse({ data: new Uint8Array(bytes) });
