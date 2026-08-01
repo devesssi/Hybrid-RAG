@@ -1,4 +1,11 @@
 import { defineConfig } from "drizzle-kit";
+import "dotenv/config";
+
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is required to run Drizzle commands.");
+}
 
 export default defineConfig({
   // Where our TypeScript blueprint schemas live
@@ -12,6 +19,6 @@ export default defineConfig({
   
   // Let Drizzle Kit know how to talk directly to our local container
   dbCredentials: {
-    url: "postgresql://postgres:mysecretpassword@localhost:5432/verbamind",
+    url: databaseUrl,
   },
-}); 
+});

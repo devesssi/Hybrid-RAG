@@ -1,5 +1,5 @@
-import { db } from "./db/index";
-import { documentChunks } from "./db/schema";
+import { getDb } from "./db/index";
+import { documentChunks, documents } from "./db/schema";
 import { getEmbedding } from "../lib/ai";
 import { sql, cosineDistance } from "drizzle-orm";
 import { traceable } from "langsmith/traceable";
@@ -8,20 +8,26 @@ interface SearchResult {
   id: string;
   content: string;
   score: number;
+  documentTitle: string;
+  sourceUrl: string | null;
 }
 
 // 1. Hardened Child Trace: Keyword FTS with Relevance Ranking
 const keywordSearchStep = traceable(
   async (queryText: string, limit: number) => {
+    const db = getDb();
     return db
       .select({
         id: documentChunks.id,
         content: documentChunks.content,
         parentContent: documentChunks.parentContent,
+        documentTitle: documents.title,
+        sourceUrl: documents.sourceUrl,
         // Calculate literal text match density
         ftsRank: sql<number>`ts_rank(to_tsvector('english', ${documentChunks.content}), websearch_to_tsquery('english', ${queryText}))`,
       })
       .from(documentChunks)
+      .innerJoin(documents, sql`${documentChunks.documentId} = ${documents.id}`)
       .where(
         sql`to_tsvector('english', ${documentChunks.content}) @@ websearch_to_tsquery('english', ${queryText})`
       )
@@ -34,13 +40,17 @@ const keywordSearchStep = traceable(
 // 2. Isolated Child Trace: Semantic Vector Search with Leak Prevention
 const vectorSearchStep = traceable(
   async (queryVector: number[], limit: number) => {
+    const db = getDb();
     return db
       .select({
         id: documentChunks.id,
         content: documentChunks.content,
         parentContent: documentChunks.parentContent,
+        documentTitle: documents.title,
+        sourceUrl: documents.sourceUrl,
       })
       .from(documentChunks)
+      .innerJoin(documents, sql`${documentChunks.documentId} = ${documents.id}`)
       // Guardrail: Cosine Distance <= 0.30 translates to a Similarity Score >= 0.70
       .where(sql`${cosineDistance(documentChunks.embedding, queryVector)} <= 0.30`)
       .orderBy(cosineDistance(documentChunks.embedding, queryVector))
@@ -55,6 +65,7 @@ export const hybridRetrieve = traceable(
     queryText: string,
     limit: number = 5
   ): Promise<SearchResult[]> {
+    if (!queryText.trim()) return [];
     
     // Concurrent Execution: Embed user query and hit the Keyword FTS Index
     const [queryVector, textMatches] = await Promise.all([
@@ -76,29 +87,41 @@ export const hybridRetrieve = traceable(
     });
 
     // Reciprocal Rank Fusion (RRF) Blending Layer
-    const rrfMap = new Map<string, { contextPayload: string; score: number }>();
+    const rrfMap = new Map<string, {
+      id: string;
+      contextPayload: string;
+      score: number;
+      documentTitle: string;
+      sourceUrl: string | null;
+    }>();
     const K = 60;
 
     const scoreStream = (
-      matches: Array<{ id: string; content: string; parentContent: string | null }>,
+      matches: Array<{
+        id: string;
+        content: string;
+        parentContent: string | null;
+        documentTitle: string;
+        sourceUrl: string | null;
+      }>,
       weightMultiplier: number
     ) => {
       matches.forEach((item, index) => {
         const rank = index + 1;
         const reciprocalScore = (1 / (K + rank)) * weightMultiplier;
 
-        const existing = rrfMap.get(item.id);
+        const contextPayload = item.parentContent?.trim() || item.content;
+        const contextKey = `${item.documentTitle}\u0000${contextPayload}`;
+        const existing = rrfMap.get(contextKey);
         if (existing) {
           existing.score += reciprocalScore;
         } else {
-          const bestContext =
-            item.parentContent && item.parentContent.trim() !== ""
-              ? item.parentContent
-              : item.content;
-
-          rrfMap.set(item.id, {
-            contextPayload: bestContext,
+          rrfMap.set(contextKey, {
+            id: item.id,
+            contextPayload,
             score: reciprocalScore,
+            documentTitle: item.documentTitle,
+            sourceUrl: item.sourceUrl,
           });
         }
       });
@@ -109,11 +132,13 @@ export const hybridRetrieve = traceable(
     scoreStream(filteredTextMatches, 1.0);
 
     // Sort and hand the finalized RRF matrix back to the engine
-    return Array.from(rrfMap.entries())
-      .map(([id, data]) => ({
-        id,
+    return Array.from(rrfMap.values())
+      .map((data) => ({
+        id: data.id,
         content: data.contextPayload,
         score: data.score,
+        documentTitle: data.documentTitle,
+        sourceUrl: data.sourceUrl,
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);

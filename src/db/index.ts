@@ -2,11 +2,21 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-// 1. Define the connection string blueprint
-const connectionString = "postgresql://postgres:mysecretpassword@localhost:5432/verbamind";
+let database: ReturnType<typeof drizzle<typeof schema>> | undefined;
 
-// 2. Create a low-level network connection client
-const queryClient = postgres(connectionString);
+/**
+ * Initializes only when an API route actually needs the database. This keeps
+ * `next build` and deployment previews independent of production secrets.
+ */
+export function getDb() {
+  if (database) return database;
 
-// 3. Initialize Drizzle as our high-level ORM management layer
-export const db = drizzle(queryClient, { schema });
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is required. Copy .env.example to .env.local and configure it.");
+  }
+
+  const queryClient = postgres(connectionString);
+  database = drizzle(queryClient, { schema });
+  return database;
+}

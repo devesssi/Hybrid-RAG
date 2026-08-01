@@ -1,6 +1,6 @@
 // src/query.ts
 import { sql } from "drizzle-orm";
-import { db } from "./db/index.js";
+import { getDb } from "./db/index.js";
 import { documentChunks } from "./db/schema.js";
 import { getEmbedding, generateAnswer } from "../lib/ai.js";
 
@@ -13,6 +13,7 @@ export async function queryRAG(question: string, options: QueryOptions = {}) {
   const topK = options.topK || 5;
   
   try {
+    const db = getDb();
     // 1. Generate the vector embedding for the incoming user query
     const queryVector = await getEmbedding(question);
     

@@ -102,7 +102,7 @@ export const generateAnswer = traceable(
         messages: [
           {
             role: "system",
-            content: `You are an advanced engineering assistant. Use the following context blocks to answer the user's question accurately. If you don't know the answer based on the context, state that clearly.
+            content: `You are an advanced engineering assistant. Answer only from the context blocks below. If the context does not support an answer, say that you do not have enough information in the knowledge base. Do not use outside knowledge or invent details. Cite every factual statement using the relevant [Source N] label. If sources conflict, state the conflict.
             
 Context:
 ${context}`,

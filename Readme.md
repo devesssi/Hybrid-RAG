@@ -1,80 +1,76 @@
-![alt text](image.png)
+# VerbaMind — grounded document intelligence
 
-notion link: [text](https://app.notion.com/p/RAG-34365d62c991807292dcef21bbf2a929?v=32065d62c99180119f17000c46c767a2&source=copy_link)
-# Custom Resilient RAG Engine
+VerbaMind is a full-stack Hybrid RAG application for asking verifiable questions over uploaded PDFs. It combines semantic retrieval with PostgreSQL full-text search, fuses results with Reciprocal Rank Fusion (RRF), and returns the source context alongside every answer.
 
-A production-minded, full-stack Retrieval-Augmented Generation (RAG) platform built to handle heavy document ingestion, layout-preserving text parsing, and verifiable semantic retrieval. 
+## Why this is a portfolio project
 
-Instead of treating the data pipeline like a black box, this system uses a custom **Engine Inspector** UI layer that breaks down vector similarity distances and uncovers the literal context strings injected into the LLM.
+- **Hybrid retrieval:** Gemini embeddings provide semantic retrieval; PostgreSQL FTS catches exact terms, names, and identifiers.
+- **RRF fusion:** Dense and keyword rankings are blended rather than relying on one retrieval signal.
+- **Parent-child retrieval:** small, overlapping child chunks are embedded for precision; their parent paragraph is supplied for useful answer context.
+- **Grounding:** the generator is instructed to answer only from retrieved sources, cite `[Source N]`, and abstain when evidence is missing.
+- **Inspectable outputs:** the UI shows every ranked source block that was supplied to the LLM.
+- **Production-aware design:** secrets and database URLs use environment variables; upload size/type validation is enforced server-side.
 
----
+## Architecture
 
-## Technical Stack
-* **Framework:** Next.js (App Router) running the **Turbopack** compiler
-* **Language:** TypeScript (`moduleResolution: "bundler"`)
-* **Database & Vectors:** PostgreSQL + `pgvector`
-* **Database Layer:** Drizzle ORM
-* **Binary Extraction:** Native `pdfjs-dist` (Legacy ESM build configuration)
-
----
-
-## System Engineering Log & Critical Breakthroughs
-
-Building this application without using bulk external wrappers (like LangChain or LlamaIndex) meant hitting several low-level compilation and runtime bugs. Here is what broke and how we engineered around it:
-
-### 1. Next.js Bundler Path Clashes
-* **The Problem:** Configuring the workspace with strict TypeScript bundler resolution parameters resulted in fatal route compilation crashes (`Module not found: Can't resolve './schema.js'`).
-* **The Fix:** Under the hood, Next.js expects clean, extensionless absolute mapping inside App Router chunks. We stripped all rigid `.js` or `.ts` file suffixes across our active route pathways (`route.ts`, `ingest.ts`, and our Drizzle configuration files), leaving native asset lookup completely to the framework compiler.
-
-### 2. PDF.js Isolated Worker Thread Collapse
-* **The Problem:** Forcing server-side string extraction directly through `pdfjs-dist` threw execution breaks because Next.js sandboxes server logic into memory buffers:
-  ```text
-  Setting up fake worker failed: "Cannot find module '.../pdf.worker.mjs'"
-
+```text
+PDF upload → PDF.js extraction → overlapping child chunks → Gemini embeddings
+                                              ↓
+                                      PostgreSQL + pgvector
+                                              ↓
+Question → vector search + PostgreSQL FTS → RRF → source-labelled context → Groq
 ```
 
-* **The Fix:** Standard dynamic imports fail when bundled via Turbopack since the relative path maps out of runtime context. We bypassed implicit module loaders completely. We combined native Node.js filesystem primitives to read the `.mjs` asset directly from the local node node module tree and cast it to an absolute static string path using `pathToFileURL`:
-```typescript
-const workerPath = path.join(process.cwd(), "node_modules", "pdfjs-dist", "legacy", "build", "pdf.worker.mjs");
-pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString();
+## Stack
 
+Next.js App Router · TypeScript · PostgreSQL + pgvector · Drizzle ORM · Gemini embeddings · Groq generation · LangGraph · LangSmith (optional) · Tailwind CSS
+
+## Run locally
+
+1. Copy `.env.example` to `.env.local` and set `GEMINI_API_KEY` and `GROQ_API_KEY`. Do not commit this file.
+2. Start local Postgres with pgvector:
+
+   ```bash
+   docker compose up -d
+   ```
+
+3. Install packages and create the schema:
+
+   ```bash
+   pnpm install
+   pnpm db:push
+   pnpm dev
+   ```
+
+4. Open `http://localhost:3000`, upload a PDF (up to 10 MB), and ask a question.
+
+## Deploy
+
+Use Vercel for the Next.js application and a hosted PostgreSQL database with the `vector` extension enabled (for example Neon, Supabase, or Railway).
+
+Set these environment variables in the deployment project:
+
+```text
+DATABASE_URL=postgresql://...
+GEMINI_API_KEY=...
+GROQ_API_KEY=...
+LANGCHAIN_TRACING_V2=true        # optional
+LANGCHAIN_API_KEY=...            # optional
+LANGCHAIN_PROJECT=verbamind      # optional
 ```
 
+Run `pnpm db:push` against the production `DATABASE_URL` once, then deploy the application. The build command is `pnpm build` and the start command is `pnpm start`.
 
+## Production notes
 
-### 3. Connection Socket Exhaustion (`ECONNREFUSED`)
+- `MemorySaver` preserves conversation state only for the active server instance. Move chat history to Redis or Postgres before claiming durable multi-user memory.
+- Add authentication and a persistent rate limiter before making uploads public; LLM API endpoints otherwise incur costs for anyone who reaches them.
+- Store documents per user/tenant and filter retrieval by owner before using private data.
+- Build a small labelled question set and measure retrieval recall and grounded-answer quality before tuning thresholds.
 
-* **The Problem:** Heavy document streams and concurrent ingestion transactions caused transient pipeline dropouts due to localized connection pool exhaustion.
-* **The Fix:** Verified socket bindings locally (`netstat -ano | findstr 5432`) and transitioned the application client from short-lived singular database client definitions to an explicit, persistent connection pool configuration under Drizzle to safely absorb simultaneous text transactions.
+## Verification
 
----
-
-## Core Retrieval Safeguard: Similarity Thresholding
-
-During testing, asking an out-of-bounds query (*e.g., "Tell me who is Elon Musk?"*) when the database only holds project management or business workflows exposed a massive flaw in standard, naive top-$K$ vector setups. The vector space *always* yields matches, forcing entirely irrelevant chunks into the prompt context. This wastes tokens and causes model hallucinations.
-
-We corrected this by implementing a hard distance constraint directly in our SQL query layout:
-
-$$\text{Similarity Score } (S) = 1 - \text{CosineDistance}(\vec{u}, \vec{v}) \ge 0.70$$
-
-If the closest vector chunks fail to cross this $0.70$ similarity floor, the retrieval layer instantly blocks prompt modification. The engine routes the execution clean away from the context generator and sets a visible warning state in the interface: `⚠️ Direct Model Knowledge (No Grounded Context Found)`.
-
----
-
-## UI/UX Framework
-
-The interface avoids cluttered data loops in favor of a responsive, two-column layout (`bg-zinc-950`):
-
-* **Left Column (35%):** Document Control Center handling drop zone tracking, real-time extraction latency metrics, and ingestion load volumes.
-* **Right Column (65%):** Unified chat feed utilizing clear semantic contrast. Every message payload contains an expandable **Inspector Accordion** exposing the exact database matching metrics (*e.g., Match: 84.2%*) and the final compiled context layout for maximum system accountability.
-
----
-
-## Current Status & Next Steps
-
-🔧 **Status: Active Improvement / Work-In-Progress**
-
-The core pipeline from document stream to semantic vector validation is stable. Current efforts are focused on:
-
-1. Hardening the thresholding boundaries to test how different vector distance metrics handle varying text structures.
-2. Integrating a session-based metadata layer to ensure multiple parallel users can query distinct private datasets simultaneously.
+```bash
+pnpm typecheck
+pnpm build
+```

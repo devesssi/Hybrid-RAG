@@ -91,7 +91,9 @@ async function hybridRAGNode(state: typeof AgentState.State) {
     const contextChunks = await hybridRetrieve(state.optimizedQuery, 4);
 
     // 2. Compile matching text chunks into a single structured string
-    const contextString = contextChunks.map((chunk) => chunk.content).join("\n\n");
+    const contextString = contextChunks
+      .map((chunk, index) => `[Source ${index + 1}: ${chunk.documentTitle}]\n${chunk.content}`)
+      .join("\n\n");
 
     if (!contextString) {
       return {
@@ -108,6 +110,9 @@ async function hybridRAGNode(state: typeof AgentState.State) {
     return {
       finalAnswer,
       citations: contextChunks.map((chunk) => ({
+        id: chunk.id,
+        documentTitle: chunk.documentTitle,
+        sourceUrl: chunk.sourceUrl,
         content: chunk.content,
         score: (chunk as any).score || null, // Capture RRF metadata if available
       })),
@@ -133,3 +138,12 @@ const workflow = new StateGraph(AgentState)
 export const conversationalEngine = workflow.compile({
   checkpointer: new MemorySaver(),
 });
+
+/** A small programmatic entry point for local smoke tests and scripts. */
+export async function askEngine(message: string, conversationId = `cli_${Date.now()}`) {
+  const finalState = await conversationalEngine.invoke(
+    { messages: [{ role: "user", content: message }] },
+    { configurable: { thread_id: conversationId } }
+  );
+  return finalState.finalAnswer;
+}
