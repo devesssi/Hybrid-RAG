@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { createRequire } from "node:module";
 import { ingestDocument } from "../../../ingest";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+const require = createRequire(import.meta.url);
 
 export async function POST(req: Request) {
   try {
@@ -23,10 +25,10 @@ export async function POST(req: Request) {
     }
 
     const bytes = await file.arrayBuffer();
-    const { PDFParse } = await import("pdf-parse");
+    const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
 
-    // pdf-parse initializes Node canvas polyfills before it loads PDF.js.
-    // That avoids browser-only globals (such as DOMMatrix) on Vercel.
+    // This is deliberately a Node require: Next keeps pdf-parse external, so
+    // its Node polyfills load before PDF.js touches browser globals on Vercel.
     const parser = new PDFParse({ data: new Uint8Array(bytes) });
     const textResult = await parser.getText();
     await parser.destroy();
