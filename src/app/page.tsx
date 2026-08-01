@@ -41,6 +41,14 @@ const STARTER_QUESTIONS = [
   "Which facts are most important?",
 ];
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+async function readApiPayload(response: Response) {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return null;
+  return response.json();
+}
+
 export default function Home() {
   const [conversationId, setConversationId] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -77,6 +85,14 @@ export default function Home() {
       return;
     }
 
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadStatus({
+        type: "error",
+        text: "This PDF is too large for the live demo. Please upload a file smaller than 4 MB.",
+      });
+      return;
+    }
+
     setIsUploading(true);
     setUploadStatus(null);
     const previewUrl = URL.createObjectURL(file);
@@ -85,8 +101,14 @@ export default function Home() {
 
     try {
       const response = await fetch("/api/ingest", { method: "POST", body: formData });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Ingestion pipeline rejected this file.");
+      const data = await readApiPayload(response);
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "The upload service rejected this file. Please use a text-based PDF smaller than 4 MB."
+        );
+      }
+      if (!data?.documentId) throw new Error("The upload service returned an unexpected response.");
 
       setIndexedDocument({ name: file.name, id: data.documentId });
       setDocumentPreviewUrl(previewUrl);
@@ -131,8 +153,9 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: prompt, conversationId }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "The answer service is unavailable.");
+      const data = await readApiPayload(response);
+      if (!response.ok) throw new Error(data?.error || "The answer service is unavailable.");
+      if (!data?.answer) throw new Error("The answer service returned an unexpected response.");
 
       setMessages([...updatedMessages, { role: "assistant", content: data.answer, citations: data.citations || [] }]);
     } catch (error: unknown) {
