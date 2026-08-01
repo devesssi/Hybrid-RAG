@@ -3,5 +3,5 @@
 @tailwind utilities;
 
 * { box-sizing: border-box; }
-html { background: #0a0a0a; }
-body { min-height: 100vh; }
+html { background: #f7f7fb; }
+body { min-height: 100vh; background: #f7f7fb; color: #172033; }
