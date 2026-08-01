@@ -25,10 +25,12 @@ export async function POST(req: Request) {
     }
 
     const bytes = await file.arrayBuffer();
+    // pdf-parse ships its Node canvas setup separately. It must run first on
+    // Vercel, where Node does not provide DOMMatrix by default.
+    require("pdf-parse/worker");
     const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
 
-    // This is deliberately a Node require: Next keeps pdf-parse external, so
-    // its Node polyfills load before PDF.js touches browser globals on Vercel.
+    // This stays a Node require so Next does not choose the browser export.
     const parser = new PDFParse({ data: new Uint8Array(bytes) });
     const textResult = await parser.getText();
     await parser.destroy();
