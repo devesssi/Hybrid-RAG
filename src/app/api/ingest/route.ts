@@ -1,4 +1,3 @@
-// src/app/api/ingest/route.ts
 import { NextResponse } from "next/server";
 import { ingestDocument } from "../../../ingest";
 
@@ -9,7 +8,7 @@ const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File;
+    const file = formData.get("file") as File | null;
 
     if (!file) {
       return NextResponse.json({ error: "No document file detected in request payload." }, { status: 400 });
@@ -20,49 +19,25 @@ export async function POST(req: Request) {
     }
 
     if (file.size === 0 || file.size > MAX_UPLOAD_BYTES) {
-      return NextResponse.json({ error: "Upload a PDF between 1 byte and 10 MB." }, { status: 413 });
+      return NextResponse.json({ error: "Upload a PDF between 1 byte and 4 MB." }, { status: 413 });
     }
-
-    console.log(`📡 API received upload request for file: ${file.name}`);
 
     const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const { PDFParse } = await import("pdf-parse");
 
-    console.log(`📄 Extracting structural text layout natively via pdfjs-dist...`);
+    // pdf-parse initializes Node canvas polyfills before it loads PDF.js.
+    // That avoids browser-only globals (such as DOMMatrix) on Vercel.
+    const parser = new PDFParse({ data: new Uint8Array(bytes) });
+    const textResult = await parser.getText();
+    await parser.destroy();
+    const extractedText = textResult.text.trim();
 
-    // Instantiate document loading directly out of the binary byte array
-    const loadingTask = pdfjs.getDocument({
-      data: new Uint8Array(buffer),
-      disableWorker: true,
-      useWorkerFetch: false,
-      isEvalSupported: false,
-    });
-    
-    const pdfDoc = await loadingTask.promise;
-    let extractedText = "";
-
-    // Iteratively extract and stitch plain-text contents page by page
-    for (let i = 1; i <= pdfDoc.numPages; i++) {
-      const page = await pdfDoc.getPage(i);
-      const textContent = await page.getTextContent();
-      
-      const pageText = textContent.items
-        // @ts-ignore
-        .map((item) => item.str)
-        .join(" ");
-      
-      extractedText += pageText + "\n";
-    }
-
-    if (!extractedText || extractedText.trim().length === 0) {
+    if (!extractedText) {
       return NextResponse.json({ error: "The uploaded PDF contains no processable text context." }, { status: 400 });
     }
 
-    // Forward raw context stream straight into your database chunking infrastructure
-    console.log(`📦 Forwarding text stream to ingestion pipeline...`);
     const documentId = await ingestDocument({
-      title: file.name.replace(/\.[^/.]+$/, ""), // Strip file extension
+      title: file.name.replace(/\.[^/.]+$/, ""),
       rawText: extractedText,
     });
 
@@ -71,11 +46,10 @@ export async function POST(req: Request) {
       message: "Document successfully indexed into vector database.",
       documentId,
     });
-
-  } catch (error: any) {
-    console.error("❌ Critical API Ingestion Endpoint Failure:", error);
+  } catch (error: unknown) {
+    console.error("PDF ingestion failed:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server infrastructure processing error." },
+      { error: error instanceof Error ? error.message : "The document could not be processed." },
       { status: 500 }
     );
   }
