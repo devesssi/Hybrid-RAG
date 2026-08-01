@@ -1,26 +1,10 @@
 // src/app/api/ingest/route.ts
 import { NextResponse } from "next/server";
 import { ingestDocument } from "../../../ingest";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
-import path from "path";
-import { pathToFileURL } from "url";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-
-// 1. Resolve the absolute physical file path to the worker in node_modules
-const workerPath = path.join(
-  process.cwd(),
-  "node_modules",
-  "pdfjs-dist",
-  "legacy",
-  "build",
-  "pdf.worker.mjs"
-);
-
-// 2. Convert it into a valid file:// string URL to satisfy the string type check and guide the loader
-pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString();
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 export async function POST(req: Request) {
   try {
@@ -43,12 +27,14 @@ export async function POST(req: Request) {
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
     console.log(`📄 Extracting structural text layout natively via pdfjs-dist...`);
 
     // Instantiate document loading directly out of the binary byte array
     const loadingTask = pdfjs.getDocument({
       data: new Uint8Array(buffer),
+      disableWorker: true,
       useWorkerFetch: false,
       isEvalSupported: false,
     });
